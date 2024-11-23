@@ -24,10 +24,6 @@ MemZone_t *zone;
 char szAppName[]="Vulkan";
 
 bool isDone=false;
-bool toggleFullscreen=true;
-
-bool isVR=true;
-extern XruContext_t xrContext;
 
 extern VkInstance vkInstance;
 extern VkuContext_t vkContext;
