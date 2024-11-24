@@ -182,37 +182,30 @@ void Printf(int x, int y, char *string, ...)
 	}
 }
 
-#define NUM_BONES 20
-typedef struct
+int ray_intersect_sphere(vec3 orig, vec3 dir, vec3 center, float radius, float *t)
 {
-	vec2 position;
-	float length;
-} Bone_t;
+	vec3 oc=Vec3_Subv(orig, center);
+	float a=Vec3_Dot(dir, dir);
+	float b=2.0f*Vec3_Dot(oc, dir);
+	float c=Vec3_Dot(oc, oc)-radius*radius;
+	float discriminant=b*b-4.0f*a*c;
 
-Bone_t bones[NUM_BONES];
+	if(discriminant<0) return 0;
 
-void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
+	*t=(-b-sqrtf(discriminant))/(2.0f*a);
+	return *t>0;
+}
+
+int ray_intersect_plane(vec3 orig, vec3 dir, vec3 point, vec3 normal, float *t)
 {
-	// Save original root position
-	vec2 root=bones[0].position;
-
-	// Backward pass: adjust positions from end to root
-	bones[numBones-1].position=target;
-	for(int i=numBones-2;i>=0;i--)
+	float denom=Vec3_Dot(normal, dir);
+	if(fabs(denom)>1e-6)
 	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i+1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i+1].position, Vec2_Muls(dir, bones[i].length));
+		vec3 p0l0=Vec3_Subv(point, orig);
+		*t=Vec3_Dot(p0l0, normal)/denom;
+		return (*t>=0);
 	}
-
-	// Forward pass: Adjust positions from root to end
-	bones[0].position=root;
-	for(int i=1;i<numBones;i++)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i-1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i-1].position, Vec2_Muls(dir, bones[i].length));
-	}
+	return 0;
 }
 
 void Draw(void)
@@ -220,16 +213,105 @@ void Draw(void)
 	// Clear screen
 	memset(perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
 
-	// Draw things
-	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
+	vec3 camera={ 0.0f, 0.0f, -5.0f }; // Camera position
 
-	bones[0].position=Vec2(10.0f, (float)renderHeight*0.5f);
+	vec3 light={ sinf(fTime)*5.0f, 5.0f, cosf(fTime)*5.0f };   // Light position
 
-	for(uint32_t i=0;i<NUM_BONES-1;i++)
-		DrawLine(bones[i].position.x, bones[i].position.y, bones[i+1].position.x, bones[i+1].position.y, (float[]) { 1.0f, 1.0f, 1.0f });
+	vec3 sphereCenter1={ 0.0f, 0.0f, 0.0f }; // First sphere position
+	vec3 sphereCenter2={ cosf(fTime)*2.0f, 1.0f, sinf(fTime)*2.0f }; // Second sphere position
+	float sphereRadius=1.0f; // Sphere radius
 
-	solveFABRIK(bones, NUM_BONES, mousePosition);
+	vec3 planePoint={ 0.0f, -1.0f, 0.0f }; // Point on the plane
+	vec3 planeNormal={ 0.0f, 1.0f, 0.0f }; // Plane normal
 
+	float aspect_ratio=(float)renderWidth/renderHeight;
+
+	for(int y=0;y<renderHeight;y++)
+	{
+		float fy=((renderHeight/2.0f)-y)/(renderHeight/2.0f);
+
+		for(int x=0;x<renderWidth;x++)
+		{
+			float fx=(x-renderWidth/2.0f)/(renderWidth/2.0f)*aspect_ratio;
+
+			// Direction of the ray
+			vec3 dir={ fx, fy, 1.0f };
+			Vec3_Normalize(&dir);
+
+			// Initialize closest intersection parameters
+			float tNearest=INFINITY;
+			vec3 normalNearest={ 0.0f, 0.0f, 0.0f };
+			int hitObject=-1; // -1: none, 0: first sphere, 1: second sphere, 2: plane
+
+			// Ray-Sphere intersection (first sphere)
+			float t1;
+
+			if(ray_intersect_sphere(camera, dir, sphereCenter1, sphereRadius, &t1)&&t1<tNearest)
+			{
+				tNearest=t1;
+				hitObject=0;
+				normalNearest=Vec3_Subv(Vec3_Addv(camera, Vec3_Muls(dir, t1)), sphereCenter1);
+				Vec3_Normalize(&normalNearest);
+			}
+
+			// Ray-Sphere intersection (second sphere)
+			float t2;
+
+			if(ray_intersect_sphere(camera, dir, sphereCenter2, sphereRadius, &t2)&&t2<tNearest)
+			{
+				tNearest=t2;
+				hitObject=1;
+				normalNearest=Vec3_Subv(Vec3_Addv(camera, Vec3_Muls(dir, t2)), sphereCenter2);
+				Vec3_Normalize(&normalNearest);
+			}
+
+			// Ray-Plane intersection
+			float tPlane;
+
+			if(ray_intersect_plane(camera, dir, planePoint, planeNormal, &tPlane)&&tPlane<tNearest)
+			{
+				tNearest=tPlane;
+				hitObject=2;
+				normalNearest=planeNormal;
+			}
+
+			// If we hit something, calculate lighting and shadow
+			if(hitObject!=-1)
+			{
+				vec3 hitPoint=Vec3_Addv(camera, Vec3_Muls(dir, tNearest));
+
+				// Calculate the light direction
+				vec3 lightDir=Vec3_Subv(light, hitPoint);
+				Vec3_Normalize(&lightDir);
+
+				// Shadow test: check if the hit point is in shadow
+				vec3 shadowOrigin=Vec3_Addv(hitPoint, Vec3_Muls(normalNearest, 0.001f)); // Offset to avoid self-intersection
+				float tShadow;
+				int shadowHit=0;
+
+				if(ray_intersect_sphere(shadowOrigin, lightDir, sphereCenter1, sphereRadius, &tShadow)||
+				   ray_intersect_sphere(shadowOrigin, lightDir, sphereCenter2, sphereRadius, &tShadow)||
+				   ray_intersect_plane(shadowOrigin, lightDir, planePoint, planeNormal, &tShadow))
+				{
+					shadowHit=1;
+				}
+
+				// If not in shadow, calculate shading
+				float lightIntensity=0.0f;
+
+				if(!shadowHit)
+					lightIntensity=fmax(0.0f, Vec3_Dot(normalNearest, lightDir));
+
+				// Draw the pixel
+				DrawPixel(x, y, (float[]) { lightIntensity, lightIntensity, lightIntensity });
+			}
+			else
+			{
+				// Background color
+				DrawPixel(x, y, (float[]) { 0.0f, 0.0f, 0.0f });
+			}
+		}
+	}
 	Printf(0, 0, "FPS: %0.2f\nFrame time: %0.4f", fps, fTimeStep*1000.0f);
 }
 
@@ -327,12 +409,6 @@ bool Init(void)
 {
 	mousePosition.x=(float)renderWidth/2.0f;
 	mousePosition.y=(float)renderHeight/3.0f;
-
-	for(uint32_t i=0;i<NUM_BONES;i++)
-	{
-		bones[i].length=(float)renderWidth/NUM_BONES;
-		bones[i].position=Vec2b(0.0f);
-	}
 
 	vkuMemAllocator_Init(&vkContext);
 
