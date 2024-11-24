@@ -182,53 +182,32 @@ void Printf(int x, int y, char *string, ...)
 	}
 }
 
-#define NUM_BONES 20
-typedef struct
-{
-	vec2 position;
-	float length;
-} Bone_t;
-
-Bone_t bones[NUM_BONES];
-
-void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
-{
-	// Save original root position
-	vec2 root=bones[0].position;
-
-	// Backward pass: adjust positions from end to root
-	bones[numBones-1].position=target;
-	for(int i=numBones-2;i>=0;i--)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i+1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i+1].position, Vec2_Muls(dir, bones[i].length));
-	}
-
-	// Forward pass: Adjust positions from root to end
-	bones[0].position=root;
-	for(int i=1;i<numBones;i++)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i-1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i-1].position, Vec2_Muls(dir, bones[i].length));
-	}
-}
-
 void Draw(void)
 {
 	// Clear screen
 	memset(perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
 
-	// Draw things
-	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
+	int32_t centerX=renderWidth/2;
+	int32_t centerY=renderHeight/2;
 
-	bones[0].position=Vec2(10.0f, (float)renderHeight*0.5f);
+	// Loop through every pixel
+	for(int32_t y=0;y<renderHeight;y++)
+	{
+		float dy=y-centerY;
 
-	for(uint32_t i=0;i<NUM_BONES-1;i++)
-		DrawLine(bones[i].position.x, bones[i].position.y, bones[i+1].position.x, bones[i+1].position.y, (float[]) { 1.0f, 1.0f, 1.0f });
+		for(int32_t x=0;x<renderWidth;x++)
+		{
+			float dx=x-centerX;
+			float r=sqrtf(dx*dx+dy*dy);
+			float theta=atan2f(dy, dx);
 
-	solveFABRIK(bones, NUM_BONES, mousePosition);
+			theta+=sinf(fTime)*r/100.0+fTime;
+
+			float color=sinf(r/10.0+theta*10.0)*0.5f+0.5f;
+
+			DrawPixel(x, y, (float[]) { color, color, color });
+		}
+	}
 
 	Printf(0, 0, "FPS: %0.2f\nFrame time: %0.4f", fps, fTimeStep*1000.0f);
 }
@@ -327,12 +306,6 @@ bool Init(void)
 {
 	mousePosition.x=(float)renderWidth/2.0f;
 	mousePosition.y=(float)renderHeight/3.0f;
-
-	for(uint32_t i=0;i<NUM_BONES;i++)
-	{
-		bones[i].length=(float)renderWidth/NUM_BONES;
-		bones[i].position=Vec2b(0.0f);
-	}
 
 	vkuMemAllocator_Init(&vkContext);
 
