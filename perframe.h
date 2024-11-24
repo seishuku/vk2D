@@ -6,6 +6,8 @@
 
 typedef struct
 {
+	VkuBuffer_t fbStagingBuffer;
+
 	// Descriptor pool
 	VkDescriptorPool descriptorPool;
 
