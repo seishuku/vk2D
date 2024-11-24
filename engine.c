@@ -182,53 +182,53 @@ void Printf(int x, int y, char *string, ...)
 	}
 }
 
-#define NUM_BONES 20
-typedef struct
-{
-	vec2 position;
-	float length;
-} Bone_t;
+uint8_t *buffers[2];
 
-Bone_t bones[NUM_BONES];
+uint8_t FireRed[256]={ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,6,6,6,7,7,8,8,8,9,9,10,10,11,
+	11,12,12,13,13,14,14,15,15,16,17,17,18,18,19,20,20,21,22,22,23,23,24,25,25,26,27,27,28,29,30,30,31,32,32,33,34,34,35,36,36,37,38,38,39,40,40,41,41,42,43,43,44,44,45,46,46,47,47,48,48,49,49,50,
+	50,51,51,52,52,52,53,53,54,54,54,55,55,55,56,56,56,57,57,57,57,58,58,58,58,59,59,59,59,59,60,60,60,60,60,60,60,61,61,61,61,61,61,61,61,61,61,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,
+	62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62,62 };
 
-void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
-{
-	// Save original root position
-	vec2 root=bones[0].position;
+uint8_t FireGreen[256]={ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,
+	3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,6,6,6,6,7,7,7,7,8,8,8,8,9,9,9,9,10,10,10,11,11,11,12,12,12,13,13,13,14,14,14,15,15,15,16,16,16,17,17,18,18,18,19,19,19,20,20,
+	21,21,21,22,22,23,23,23,24,24,25,25,26,26,26,27,27,28,28,29,29,29,30,30,31,31,32,32,32,33,33,34,34,35,35,35,36,36,37,37,37,38,38,39,39,40,40,40,41,41,42,42,42,43,43,43,44,44,45,45,45,46,46,46,
+	47,47,47,48,48,48,49,49,49,50,50,50,50,51,51,51,52,52,52,52,53,53,53,53,54,54,54,54,55,55,55,55,55,56,56,56,56,56,57,57,57,57,57,57,58,58,58,58,58,58,59,59,59,59,59,59,59,59,60,60,60,60,60,60 };
 
-	// Backward pass: adjust positions from end to root
-	bones[numBones-1].position=target;
-	for(int i=numBones-2;i>=0;i--)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i+1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i+1].position, Vec2_Muls(dir, bones[i].length));
-	}
-
-	// Forward pass: Adjust positions from root to end
-	bones[0].position=root;
-	for(int i=1;i<numBones;i++)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i-1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i-1].position, Vec2_Muls(dir, bones[i].length));
-	}
-}
+uint8_t FireBlue[256]={ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+	1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,
+	5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11 };
 
 void Draw(void)
 {
 	// Clear screen
 	memset(fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
 
-	// Draw things
-	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
+	for(uint32_t i=0;i<renderWidth*4;i++)
+		buffers[0][rand()%(renderWidth*4)]=rand()%255;
 
-	bones[0].position=Vec2(10.0f, (float)renderHeight*0.5f);
+	for(uint32_t y=2;y<renderHeight-1;y++)
+	{
+		for(uint32_t x=1;x<renderWidth-1;x++)
+		{
+			buffers[1][y*renderWidth+x]=(
+				buffers[0][(y-1)*renderWidth+(x-1)]+
+				buffers[0][(y+1)*renderWidth+(x+0)]+
+				buffers[0][(y-2)*renderWidth+(x+1)]+
+				buffers[0][(y-2)*renderWidth+(x+0)]
+			)/4;
+		}
+	}
 
-	for(uint32_t i=0;i<NUM_BONES-1;i++)
-		DrawLine(bones[i].position.x, bones[i].position.y, bones[i+1].position.x, bones[i+1].position.y, (float[]) { 1.0f, 1.0f, 1.0f });
+	for(uint32_t y=0;y<renderHeight;y++)
+	{
+		int flipy=renderHeight-1-y;
 
-	solveFABRIK(bones, NUM_BONES, mousePosition);
+		for(uint32_t x=0;x<renderWidth;x++)
+			DrawPixel(x, y, (float[]) { (float)FireRed[buffers[1][flipy*renderWidth+x]]/63.0f, (float)FireGreen[buffers[1][flipy*renderWidth+x]]/63.0f, (float)FireBlue[buffers[1][flipy*renderWidth+x]]/63.0f });
+	}
+
+	memcpy(buffers[0], buffers[1], renderWidth*renderHeight);
 
 	Printf(0, 0, "FPS: %0.2f\nFrame time: %0.4f", fps, fTimeStep*1000.0f);
 }
@@ -327,11 +327,8 @@ bool Init(void)
 	mousePosition.x=(float)renderWidth/2.0f;
 	mousePosition.y=(float)renderHeight/3.0f;
 
-	for(uint32_t i=0;i<NUM_BONES;i++)
-	{
-		bones[i].length=(float)renderWidth/NUM_BONES;
-		bones[i].position=Vec2b(0.0f);
-	}
+	buffers[0]=(uint8_t *)Zone_Malloc(zone, renderWidth*renderHeight);
+	buffers[1]=(uint8_t *)Zone_Malloc(zone, renderWidth*renderHeight);
 
 	vkuMemAllocator_Init(&vkContext);
 
@@ -443,6 +440,9 @@ void RecreateSwapchain(void)
 void Destroy(void)
 {
 	vkDeviceWaitIdle(vkContext.device);
+
+	Zone_Free(zone, buffers[0]);
+	Zone_Free(zone, buffers[1]);
 
 	vkuDestroyBuffer(&vkContext, &fbStagingBuffer);
 
