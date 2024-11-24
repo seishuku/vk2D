@@ -27,8 +27,6 @@ extern float fps, fTimeStep, fTime;
 // Vulkan swapchain helper struct
 VkuSwapchain_t swapchain;
 
-VkuBuffer_t fbStagingBuffer;
-
 // Per-frame data
 PerFrame_t perFrame[VKU_MAX_FRAME_COUNT];
 
@@ -36,12 +34,14 @@ extern vec2 mousePosition;
 
 void RecreateSwapchain(void);
 
+static uint32_t frameIndex=0;
+
 void DrawPixel(int x, int y, float color[3])
 {
 	if(x<0||y<0||x>=renderWidth||y>=renderHeight)
 		return;
 
-	uint8_t *pixel=(uint8_t *)fbStagingBuffer.memory->mappedPointer+(4*(y*renderWidth+x));
+	uint8_t *pixel=(uint8_t *)perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer+(4*(y*renderWidth+x));
 
 	*pixel++=(unsigned char)(color[2]*255.0f)&0xFF;
 	*pixel++=(unsigned char)(color[1]*255.0f)&0xFF;
@@ -218,7 +218,7 @@ void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
 void Draw(void)
 {
 	// Clear screen
-	memset(fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
+	memset(perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
 
 	// Draw things
 	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
@@ -281,7 +281,7 @@ void Render(void)
 	{
 		0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 }, { renderWidth, renderHeight, 1 }
 	};
-	vkCmdCopyBufferToImage(perFrame[index].commandBuffer, fbStagingBuffer.buffer, swapchain.image[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	vkCmdCopyBufferToImage(perFrame[index].commandBuffer, perFrame[index].fbStagingBuffer.buffer, swapchain.image[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 	vkuTransitionLayout(perFrame[index].commandBuffer, swapchain.image[index], 1, 0, 1, 0, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -317,6 +317,7 @@ void Render(void)
 		DBGPRINTF(DEBUG_WARNING, "vkQueuePresent out of date or suboptimal...\n");
 
 	index=(index+1)%swapchain.numImages;
+	frameIndex=index;
 }
 
 bool vkuMemAllocator_Init(VkuContext_t *context);
@@ -335,11 +336,11 @@ bool Init(void)
 
 	vkuMemAllocator_Init(&vkContext);
 
-	vkuCreateHostBuffer(&vkContext, &fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-
 	// Other per-frame data
 	for(uint32_t i=0;i<swapchain.numImages;i++)
 	{
+		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+
 		// Create needed fence and semaphores for rendering
 		// Wait fence for command queue, to signal when we can submit commands again
 		vkCreateFence(vkContext.device, &(VkFenceCreateInfo) {.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags=VK_FENCE_CREATE_SIGNALED_BIT }, VK_NULL_HANDLE, &perFrame[i].frameFence);
@@ -416,10 +417,10 @@ void RecreateSwapchain(void)
 	vkuDestroySwapchain(&vkContext, &swapchain);
 	memset(&swapchain, 0, sizeof(swapchain));
 
-	vkuDestroyBuffer(&vkContext, &fbStagingBuffer);
-
 	for(uint32_t i=0;i<swapchain.numImages;i++)
 	{
+		vkuDestroyBuffer(&vkContext, &perFrame[i].fbStagingBuffer);
+
 		vkDestroyFence(vkContext.device, perFrame[i].frameFence, VK_NULL_HANDLE);
 		vkCreateFence(vkContext.device, &(VkFenceCreateInfo) {.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags=VK_FENCE_CREATE_SIGNALED_BIT }, VK_NULL_HANDLE, &perFrame[i].frameFence);
 
@@ -436,7 +437,8 @@ void RecreateSwapchain(void)
 	renderWidth=max(2, swapchain.extent.width);
 	renderHeight=max(2, swapchain.extent.height);
 
-	vkuCreateHostBuffer(&vkContext, &fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+	for(uint32_t i=0;i<swapchain.numImages;i++)
+		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 }
 
 // Destroy call from system main
@@ -444,10 +446,10 @@ void Destroy(void)
 {
 	vkDeviceWaitIdle(vkContext.device);
 
-	vkuDestroyBuffer(&vkContext, &fbStagingBuffer);
-
 	for(uint32_t i=0;i<swapchain.numImages;i++)
 	{
+		vkuDestroyBuffer(&vkContext, &perFrame[i].fbStagingBuffer);
+
 		// Destroy sync objects
 		vkDestroyFence(vkContext.device, perFrame[i].frameFence, VK_NULL_HANDLE);
 
