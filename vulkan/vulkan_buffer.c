@@ -301,6 +301,11 @@ void vkuTransitionLayout(VkCommandBuffer commandBuffer, VkImage image, uint32_t 
 			srcStageFlag=VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 			break;
 
+		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+			srcAccessMask=VK_ACCESS_MEMORY_READ_BIT;
+			srcStageFlag=VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+			break;
+
 		case VK_IMAGE_LAYOUT_UNDEFINED:
 		default:
 			srcStageFlag=VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -338,8 +343,8 @@ void vkuTransitionLayout(VkCommandBuffer commandBuffer, VkImage image, uint32_t 
 			break;
 
 		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			//dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			dstStageFlag=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dstAccessMask=VK_ACCESS_MEMORY_READ_BIT;
+			dstStageFlag=VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 			break;
 
 		default:
