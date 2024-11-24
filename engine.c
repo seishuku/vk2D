@@ -182,53 +182,46 @@ void Printf(int x, int y, char *string, ...)
 	}
 }
 
-#define NUM_BONES 20
-typedef struct
-{
-	vec2 position;
-	float length;
-} Bone_t;
-
-Bone_t bones[NUM_BONES];
-
-void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
-{
-	// Save original root position
-	vec2 root=bones[0].position;
-
-	// Backward pass: adjust positions from end to root
-	bones[numBones-1].position=target;
-	for(int i=numBones-2;i>=0;i--)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i+1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i+1].position, Vec2_Muls(dir, bones[i].length));
-	}
-
-	// Forward pass: Adjust positions from root to end
-	bones[0].position=root;
-	for(int i=1;i<numBones;i++)
-	{
-		vec2 dir=Vec2_Subv(bones[i].position, bones[i-1].position);
-		Vec2_Normalize(&dir);
-		bones[i].position=Vec2_Addv(bones[i-1].position, Vec2_Muls(dir, bones[i].length));
-	}
-}
+uint16_t pos1=0, pos2=0, pos3=0, pos4=0, tpos1, tpos2, tpos3, tpos4;
+int32_t aSin[512];
+vec3 colors[256];
 
 void Draw(void)
 {
 	// Clear screen
 	memset(fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
 
-	// Draw things
-	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
+	tpos4=pos4;
+	tpos3=pos3;
 
-	bones[0].position=Vec2(10.0f, (float)renderHeight*0.5f);
+	for(uint32_t y=0;y<renderHeight;y++)
+	{
+		tpos1=pos1+5;
+		tpos2=pos2+3;
 
-	for(uint32_t i=0;i<NUM_BONES-1;i++)
-		DrawLine(bones[i].position.x, bones[i].position.y, bones[i+1].position.x, bones[i+1].position.y, (float[]) { 1.0f, 1.0f, 1.0f });
+		tpos3&=511;
+		tpos4&=511;
 
-	solveFABRIK(bones, NUM_BONES, mousePosition);
+		for(uint32_t x=0;x<renderWidth;x++)
+		{
+			tpos1&=511;
+			tpos2&=511;
+
+			const int32_t plasma=aSin[tpos1]+aSin[tpos2]+aSin[tpos3]+aSin[tpos4];
+			const uint8_t index=128+(plasma>>4);
+
+			DrawPixel(x, y, (float[]) { colors[index].x, colors[index].y, colors[index].z });
+
+			tpos1+=5;
+			tpos2+=3;
+		}
+
+		tpos4+=3;
+		tpos3+=1;
+	}
+
+	pos1+=9;
+	pos3+=8;
 
 	Printf(0, 0, "FPS: %0.2f\nFrame time: %0.4f", fps, fTimeStep*1000.0f);
 }
@@ -327,10 +320,26 @@ bool Init(void)
 	mousePosition.x=(float)renderWidth/2.0f;
 	mousePosition.y=(float)renderHeight/3.0f;
 
-	for(uint32_t i=0;i<NUM_BONES;i++)
+	for(uint32_t i=0;i<512;i++)
 	{
-		bones[i].length=(float)renderWidth/NUM_BONES;
-		bones[i].position=Vec2b(0.0f);
+		const float rad=((float)i*0.703125f)*0.0174532f;
+		aSin[i]=sinf(rad)*1024;
+	}
+
+	memset(colors, 0, sizeof(vec3)*256);
+
+	for(uint32_t i=0;i<64;i++)
+	{
+		colors[i].x=(float)(i<<2)/255.0f;
+		colors[i].y=(float)(255-((i<<2)+1))/255.0f;
+
+		colors[i+64].x=1.0f;
+		colors[i+64].y=(float)((i<<2)+1)/255.0f;
+
+		colors[i+128].x=(float)(255-((i<<2)+1))/255.0f;
+		colors[i+128].y=(float)(255-((i<<2)+1))/255.0f;
+
+		colors[i+192].y=(float)((i<<2)+1)/255.0f;
 	}
 
 	vkuMemAllocator_Init(&vkContext);
