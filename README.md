@@ -3,4 +3,4 @@ A simple vulkan framework based on works with my main vulkan engine for doing si
 
 Mainly created this, because I had been using the old DirectDraw 7 API, besides being antiquated/disconinued since Windows 7/8, also isn't portable. vk2D will run on Windows, Linux, and should work on Android once I add in support.
 
-The drawing that's ran on this sample is a simple 2D FABRIK (Forward And Backward Reaching Inverse Kinematics) solver.
+The drawing that's ran on this sample is the classic water raindrop "simulation".
