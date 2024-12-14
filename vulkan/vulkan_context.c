@@ -64,7 +64,7 @@ void PrintMemoryTypeFlags(VkMemoryPropertyFlags propertyFlags)
 }
 
 // Creates a Vulkan Context
-VkBool32 CreateVulkanContext(VkInstance instance, VkuContext_t *context)
+VkBool32 vkuCreateContext(VkInstance instance, VkuContext_t *context)
 {
 #ifdef WIN32
 	if(vkCreateWin32SurfaceKHR(instance, &(VkWin32SurfaceCreateInfoKHR)
@@ -423,6 +423,8 @@ VkBool32 CreateVulkanContext(VkInstance instance, VkuContext_t *context)
 		return VK_FALSE;
 	}
 
+	features.robustBufferAccess=false;
+
 	// Enable extensions that are supported
 	const char *extensions[100];
 	uint32_t numExtensions=0;
@@ -594,7 +596,7 @@ VkBool32 CreateVulkanContext(VkInstance instance, VkuContext_t *context)
 }
 
 // Destroys a Vulkan context
-void DestroyVulkan(VkInstance instance, VkuContext_t *context)
+void vkuDestroyContext(VkInstance instance, VkuContext_t *context)
 {
 	if(!context)
 		return;
