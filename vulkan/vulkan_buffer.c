@@ -297,6 +297,9 @@ inline static const VkAccessFlags selectLayoutAccessFlags(const VkImageLayout la
 {
 	switch(layout)
 	{
+		case VK_IMAGE_LAYOUT_PREINITIALIZED:
+			return VK_ACCESS_HOST_WRITE_BIT;
+
 		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 			return VK_ACCESS_TRANSFER_READ_BIT;
 
@@ -306,9 +309,13 @@ inline static const VkAccessFlags selectLayoutAccessFlags(const VkImageLayout la
 		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 			return VK_ACCESS_SHADER_READ_BIT;
 
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			return VK_ACCESS_MEMORY_READ_BIT;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 		case VK_IMAGE_LAYOUT_UNDEFINED:
 		default:
 			return VK_ACCESS_NONE;
@@ -317,16 +324,11 @@ inline static const VkAccessFlags selectLayoutAccessFlags(const VkImageLayout la
 
 void vkuTransitionLayout(VkCommandBuffer commandBuffer, VkImage image, uint32_t levelCount, uint32_t baseLevel, uint32_t layerCount, uint32_t baseLayer, VkImageAspectFlags aspectMask, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-	VkPipelineStageFlags srcStageFlag=selectLayoutPipelineStage(oldLayout);
-	VkPipelineStageFlags dstStageFlag=selectLayoutPipelineStage(newLayout);
-	VkAccessFlags srcAccessMask=selectLayoutAccessFlags(oldLayout);
-	VkAccessFlags dstAccessMask=selectLayoutAccessFlags(newLayout);
-
-	vkCmdPipelineBarrier(commandBuffer, srcStageFlag, dstStageFlag, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &(VkImageMemoryBarrier)
+	vkCmdPipelineBarrier(commandBuffer, selectLayoutPipelineStage(oldLayout), selectLayoutPipelineStage(newLayout), 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &(VkImageMemoryBarrier)
 	{
 		.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.srcAccessMask=srcAccessMask,
-		.dstAccessMask=dstAccessMask,
+		.srcAccessMask=selectLayoutAccessFlags(oldLayout),
+		.dstAccessMask=selectLayoutAccessFlags(newLayout),
 		.oldLayout=oldLayout,
 		.newLayout=newLayout,
 		.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
