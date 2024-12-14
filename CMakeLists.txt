@@ -1,13 +1,17 @@
 ﻿cmake_minimum_required (VERSION 3.8)
 
-include(FetchContent)
-
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED True)
 
 project ("vk2D" LANGUAGES C)
 
-find_package(Vulkan COMPONENTS glslc)
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
+#include("fetchDeps")
+include("buildShaders")
+
+#fetchDeps()
+buildShaders()
 
 set(PROJECT_SOURCES
 	math/math.c
@@ -37,56 +41,12 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Windows")
-	add_definitions(-DWIN32 -D_CRT_SECURE_NO_WARNINGS -D_CONSOLE)
-	list(APPEND PROJECT_SOURCES system/win32.c)
+	include("buildWindows")
+	buildWindows()
 elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
-if(WAYLAND)
-	add_definitions(-DLINUX -DWAYLAND -g)
-	list(APPEND PROJECT_SOURCES system/linux_wayland.c system/xdg-shell.c system/relative-pointer.c)
-else()
-	add_definitions(-DLINUX -g)
-	list(APPEND PROJECT_SOURCES system/linux_x11.c)
-endif()
-endif()
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-        add_compile_options(
-			"-march=x86-64-v3"
-			"-ggdb3"
-			"-fprofile-instr-generate"
-			"/PROFILE"
-		)
-    else()
-        message(WARNING "Unknown CPU architecture ${CMAKE_SYSTEM_PROCESSOR} not targeted.")
-    endif()
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64")
-        add_compile_options("/arch:AVX2")
-        else()
-            message(WARNING "Unknown CPU architecture ${CMAKE_SYSTEM_PROCESSOR} not targeted.")
-    endif()
-endif()
-
-add_executable(${CMAKE_PROJECT_NAME} ${PROJECT_SOURCES})
-
-target_link_libraries(
-    ${CMAKE_PROJECT_NAME} PUBLIC
-	Vulkan::Vulkan
-)
-
-if(CMAKE_SYSTEM_NAME MATCHES "Windows")
-target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC xinput.lib)
-endif()
-
-if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-if(WAYLAND)
-target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC m xkbcommon wayland-client)
-else()
-target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC m X11 Xi Xfixes)
-endif()
-endif()
-
-if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
-target_compile_options(${CMAKE_PROJECT_NAME} PUBLIC /experimental:c11atomics)
+	include("buildLinux")
+	buildLinux()
+elseif(CMAKE_SYSTEM_NAME MATCHES "Android")
+	include("buildAndroid")
+	buildAndroid()
 endif()
