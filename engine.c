@@ -43,9 +43,18 @@ void DrawPixel(int x, int y, float color[3])
 
 	uint8_t *pixel=(uint8_t *)perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer+(4*(y*renderWidth+x));
 
-	*pixel++=(unsigned char)(color[2]*255.0f)&0xFF;
-	*pixel++=(unsigned char)(color[1]*255.0f)&0xFF;
-	*pixel++=(unsigned char)(color[0]*255.0f)&0xFF;
+	if(swapchain.surfaceFormat.format==VK_FORMAT_R8G8B8A8_SRGB)
+	{
+		*pixel++=(unsigned char)(color[0]*255.0f)&0xFF;
+		*pixel++=(unsigned char)(color[1]*255.0f)&0xFF;
+		*pixel++=(unsigned char)(color[2]*255.0f)&0xFF;
+	}
+	else if(swapchain.surfaceFormat.format==VK_FORMAT_B8G8R8A8_SRGB)
+	{
+		*pixel++=(unsigned char)(color[2]*255.0f)&0xFF;
+		*pixel++=(unsigned char)(color[1]*255.0f)&0xFF;
+		*pixel++=(unsigned char)(color[0]*255.0f)&0xFF;
+	}
 }
 
 void DrawLine(int x0, int y0, int x1, int y1, float color[3])
