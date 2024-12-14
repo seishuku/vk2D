@@ -3,12 +3,22 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# android signing signature?
+*.idsig
+
+# code objects
+*.o
+
+#vscode user-specific files
+.vscode/
+
 # User-specific files
 *.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
+pipelinecache.bin
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -17,6 +27,7 @@
 mono_crash.*
 
 # Build results
+apk/
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
@@ -76,6 +87,8 @@ StyleCopReport.xml
 *.ilk
 *.meta
 *.obj
+# allow obj files in assets, those are models
+!assets/*.obj
 *.iobj
 *.pch
 *.pdb
