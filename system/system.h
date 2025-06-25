@@ -5,6 +5,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include "memzone.h"
+#include "../utils/config.h"
+
+extern Config_t config;
 
 #ifndef DEBUG_ERROR
 #define DEBUG_ERROR "\x1B[91m"
@@ -55,6 +58,10 @@ inline static void DBGPRINTF(const char *level, const char *format, ...)
 
 #ifndef BUFFER_OFFSET
 #define BUFFER_OFFSET(x) ((char *)NULL+(x))
+#endif
+
+#ifndef MEMZONE_SIZE
+#define MEMZONE_SIZE (512*1024*1024)
 #endif
 
 extern MemZone_t *zone;

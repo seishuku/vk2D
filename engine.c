@@ -14,9 +14,6 @@
 
 extern bool isDone;
 
-// Render size
-uint32_t renderWidth, renderHeight;
-
 // Vulkan instance handle and context structs
 VkInstance vkInstance;
 VkuContext_t vkContext;
@@ -38,10 +35,10 @@ static uint32_t frameIndex=0;
 
 void DrawPixel(int x, int y, float color[3])
 {
-	if(x<0||y<0||x>=renderWidth||y>=renderHeight)
+	if(x<0||y<0||x>=config.renderWidth||y>=config.renderHeight)
 		return;
 
-	uint8_t *pixel=(uint8_t *)perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer+(4*(y*renderWidth+x));
+	uint8_t *pixel=(uint8_t *)perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer+(4*(y*config.renderWidth+x));
 
 	if(swapchain.surfaceFormat.format==VK_FORMAT_R8G8B8A8_SRGB)
 	{
@@ -227,12 +224,12 @@ void solveFABRIK(Bone_t *bones, int numBones, vec2 target)
 void Draw(void)
 {
 	// Clear screen
-	memset(perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer, 0, renderWidth*renderHeight*4);
+	memset(perFrame[frameIndex].fbStagingBuffer.memory->mappedPointer, 0, config.renderWidth*config.renderHeight*4);
 
 	// Draw things
 	DrawFilledCircle(mousePosition.x, mousePosition.y, 10.0f, (float[]) { 0.0f, 0.0f, 1.0f });
 
-	bones[0].position=Vec2(10.0f, (float)renderHeight*0.5f);
+	bones[0].position=Vec2(10.0f, (float)config.renderHeight*0.5f);
 
 	for(uint32_t i=0;i<NUM_BONES-1;i++)
 		DrawLine(bones[i].position.x, bones[i].position.y, bones[i+1].position.x, bones[i+1].position.y, (float[]) { 1.0f, 1.0f, 1.0f });
@@ -288,7 +285,7 @@ void Render(void)
 
 	VkBufferImageCopy region=
 	{
-		0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 }, { renderWidth, renderHeight, 1 }
+		0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 }, { config.renderWidth, config.renderHeight, 1 }
 	};
 	vkCmdCopyBufferToImage(perFrame[index].commandBuffer, perFrame[index].fbStagingBuffer.buffer, swapchain.image[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
@@ -334,12 +331,12 @@ bool vkuMemAllocator_Init(VkuContext_t *context);
 // Initialization call from system main
 bool Init(void)
 {
-	mousePosition.x=(float)renderWidth/2.0f;
-	mousePosition.y=(float)renderHeight/3.0f;
+	mousePosition.x=(float)config.renderWidth/2.0f;
+	mousePosition.y=(float)config.renderHeight/3.0f;
 
 	for(uint32_t i=0;i<NUM_BONES;i++)
 	{
-		bones[i].length=(float)renderWidth/NUM_BONES;
+		bones[i].length=(float)config.renderWidth/NUM_BONES;
 		bones[i].position=Vec2b(0.0f);
 	}
 
@@ -348,7 +345,7 @@ bool Init(void)
 	// Other per-frame data
 	for(uint32_t i=0;i<swapchain.numImages;i++)
 	{
-		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, config.renderWidth*config.renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 
 		// Create needed fence and semaphores for rendering
 		// Wait fence for command queue, to signal when we can submit commands again
@@ -443,11 +440,11 @@ void RecreateSwapchain(void)
 	// Recreate the swapchain, vkuCreateSwapchain will see that there is an existing swapchain and deal accordingly. <--- FIXME: this apparently isn't working???
 	vkuCreateSwapchain(&vkContext, &swapchain, VK_TRUE);
 
-	renderWidth=max(2, swapchain.extent.width);
-	renderHeight=max(2, swapchain.extent.height);
+	config.renderWidth=max(2, swapchain.extent.width);
+	config.renderHeight=max(2, swapchain.extent.height);
 
 	for(uint32_t i=0;i<swapchain.numImages;i++)
-		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, renderWidth*renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+		vkuCreateHostBuffer(&vkContext, &perFrame[i].fbStagingBuffer, config.renderWidth*config.renderHeight*4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 }
 
 // Destroy call from system main

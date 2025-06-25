@@ -12,18 +12,26 @@
 #include <wayland-client.h>
 #include <linux/input-event-codes.h>
 #include <xkbcommon/xkbcommon.h>
-#include "xdg-shell.h"
-#include "relative-pointer.h"
-#include "../system/system.h"
-#include "../vulkan/vulkan.h"
-#include "../math/math.h"
-#include "../utils/event.h"
+#include "wayland/xdg-shell.h"
+#include "wayland/relative-pointer.h"
+#include "wayland/pointer-constraints.h"
+#include "../../system/system.h"
+#include "../../vulkan/vulkan.h"
+#include "../../math/math.h"
+#include "../../camera/camera.h"
+#include "../../utils/config.h"
+#include "../../utils/list.h"
+#include "../../utils/event.h"
+#include "../../vr/vr.h"
 
 MemZone_t *zone;
 
 char szAppName[]="Vulkan";
 
 bool isDone=false;
+bool toggleFullscreen=true;
+
+extern XruContext_t xrContext;
 
 extern VkInstance vkInstance;
 extern VkuContext_t vkContext;
@@ -31,9 +39,6 @@ extern VkuContext_t vkContext;
 extern VkuMemZone_t vkZone;
 
 extern VkuSwapchain_t swapchain;
-
-static uint32_t winWidth=1920, winHeight=1080;
-extern uint32_t renderWidth, renderHeight;
 
 float fps=0.0f, fTimeStep=0.0f, fTime=0.0f;
 
@@ -63,6 +68,8 @@ static struct wl_pointer *pointer=NULL;
 static struct zwp_relative_pointer_manager_v1 *relativePointerManager=NULL;
 static struct zwp_relative_pointer_v1 *relativePointer=NULL;
 
+static struct zwp_pointer_constraints_v1 *pointerConstraints=NULL;
+
 static struct xkb_context *xkbContext=NULL;
 static struct xkb_keymap *keymap=NULL;
 static struct xkb_state *xkbState=NULL;
@@ -83,10 +90,6 @@ static void handleShellSurfaceConfigure(void *data, struct xdg_surface *shellSur
 
 static void handleToplevelConfigure(void *data, struct xdg_toplevel *toplevel, int32_t width, int32_t height, struct wl_array *states)
 {
-    if(width!=0&&height!=0)
-    {
-        printf("%d %d", width, height);
-    }
 }
 
 static void handleToplevelClose(void *data, struct xdg_toplevel *toplevel)
@@ -199,6 +202,7 @@ static void handleModifiers(void *data, struct wl_keyboard *wl_keyboard, uint32_
 
 static void handlePointerEnter(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy)
 {
+	wl_pointer_set_cursor(wl_pointer, serial, NULL, 0, 0);
 }
 
 static void handlePointerLeave(void *data, struct wl_pointer *wl_pointer, uint32_t serial, struct wl_surface *surface)
@@ -272,6 +276,14 @@ static void handlePointerAxis(void *data, struct wl_pointer *wl_pointer, uint32_
 {
 }
 
+static void handleLocked(void *data, struct zwp_locked_pointer_v1 *locked_pointer)
+{
+}
+
+static void handleUnlocked(void *data, struct zwp_locked_pointer_v1 *locked_pointer)
+{
+}
+
 static void handleRegistry(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version);
 static void handleSeatCapabilities(void *data, struct wl_seat *seat, uint32_t caps);
 
@@ -283,6 +295,7 @@ static const struct wl_keyboard_listener keyboardListener={ .keymap=handleKeymap
 static const struct wl_pointer_listener pointerListener={ .enter=handlePointerEnter, .leave=handlePointerLeave, .motion=handlePointerMotion, .button=handlePointerButton, .axis=handlePointerAxis };
 static const struct wl_seat_listener seatListener={ .capabilities=handleSeatCapabilities };
 static const struct zwp_relative_pointer_v1_listener relativePointerListener={ .relative_motion=handleRelativePointerMotion };
+static const struct zwp_locked_pointer_v1_listener lockedPointerListener={ .locked=handleLocked, .unlocked=handleUnlocked };
 
 static void handleRegistry(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
 {
@@ -304,6 +317,10 @@ static void handleRegistry(void *data, struct wl_registry *registry, uint32_t na
         seat=wl_registry_bind(registry, name, &wl_seat_interface, 1);
         wl_seat_add_listener(seat, &seatListener, NULL);
     }
+	else if(strcmp(interface, zwp_pointer_constraints_v1_interface.name)==0)
+	{
+		pointerConstraints=wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1);
+	}
 }
 
 static void handleSeatCapabilities(void *data, struct wl_seat *seat, uint32_t caps)
@@ -328,8 +345,8 @@ static void handleSeatCapabilities(void *data, struct wl_seat *seat, uint32_t ca
 
 int main(int argc, char** argv)
 {
-    DBGPRINTF(DEBUG_INFO, "Allocating zone memory...\n");
-	zone=Zone_Init(256*1000*1000);
+    DBGPRINTF(DEBUG_INFO, "Allocating zone memory (%dMiB)...\n", MEMZONE_SIZE/1024/1024);
+    zone=Zone_Init(MEMZONE_SIZE);
 
 	if(zone==NULL)
 	{
@@ -337,7 +354,13 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	DBGPRINTF(DEBUG_INFO, "Opening Wayland display...\n");
+    if(!Config_ReadINI(&config, "config.ini"))
+    {
+        DBGPRINTF(DEBUG_ERROR, "Unable to read config.ini.\n");
+        return -1;
+    }
+    
+    DBGPRINTF(DEBUG_INFO, "Opening Wayland display...\n");
     vkContext.wlDisplay=wl_display_connect(NULL);
 
 	if(vkContext.wlDisplay==NULL)
@@ -364,6 +387,9 @@ int main(int argc, char** argv)
     wl_surface_commit(vkContext.wlSurface);
     wl_display_roundtrip(vkContext.wlDisplay);
 
+	struct zwp_locked_pointer_v1 *lockedPointer=zwp_pointer_constraints_v1_lock_pointer(pointerConstraints, vkContext.wlSurface, pointer, NULL, ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
+	zwp_locked_pointer_v1_add_listener(lockedPointer, &lockedPointerListener, NULL);
+
 	DBGPRINTF(DEBUG_INFO, "Creating Vulkan Instance...\n");
 	if(!vkuCreateInstance(&vkInstance))
 	{
@@ -371,15 +397,17 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	DBGPRINTF(DEBUG_INFO, "Creating Vulkan Context...\n");
+    vkContext.deviceIndex=config.deviceIndex;
+    
+    DBGPRINTF(DEBUG_INFO, "Creating Vulkan Context...\n");
 	if(!vkuCreateContext(vkInstance, &vkContext))
 	{
 		DBGPRINTF(DEBUG_ERROR, "...failed.\n");
 		return -1;
 	}
 
-    swapchain.extent.width=winWidth;
-    swapchain.extent.height=winHeight;
+    swapchain.extent.width=config.windowWidth;
+    swapchain.extent.height=config.windowHeight;
 
 	DBGPRINTF(DEBUG_INFO, "Creating Vulkan Swapchain...\n");
 	if(!vkuCreateSwapchain(&vkContext, &swapchain, VK_TRUE))
@@ -389,8 +417,22 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		renderWidth=swapchain.extent.width;
-		renderHeight=swapchain.extent.height;
+        config.renderWidth=swapchain.extent.width;
+        config.renderHeight=swapchain.extent.height;
+	}
+
+	DBGPRINTF(DEBUG_INFO, "Initializing VR...\n");
+	if(!VR_Init(&xrContext, vkInstance, &vkContext))
+	{
+		DBGPRINTF(DEBUG_ERROR, "\t...failed, turning off VR support.\n");
+        config.isVR=false;
+	}
+	else
+	{
+        config.renderWidth=xrContext.swapchainExtent.width;
+        config.renderHeight=xrContext.swapchainExtent.height;
+		config.windowWidth=config.renderWidth;
+		config.windowHeight=config.renderHeight;
 	}
 
 	DBGPRINTF(DEBUG_INFO, "Initializing Vulkan resources...\n");

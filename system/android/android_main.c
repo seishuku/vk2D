@@ -7,25 +7,31 @@
 #include <sys/time.h>
 #include <time.h>
 #include "android_native_app_glue.h"
-#include "../system/system.h"
-#include "../system/memzone.h"
-#include "../vulkan/vulkan.h"
-#include "../math/math.h"
-#include "../utils/event.h"
+#include "../../system/system.h"
+#include "../../system/memzone.h"
+#include "../../vulkan/vulkan.h"
+#include "../../math/math.h"
+#include "../../vr/vr.h"
+#include "../../utils/config.h"
+#include "../../utils/event.h"
 
 MemZone_t *zone;
 
 bool isDone=false;
+
+bool isVR=false;
+extern XruContext_t xrContext;
 
 extern VkInstance vkInstance;
 extern VkuContext_t vkContext;
 
 extern VkuSwapchain_t swapchain;
 
-static uint32_t winWidth, winHeight;
 extern uint32_t renderWidth, renderHeight;
 
 float fps=0.0f, fTimeStep=0.0f, fTime=0.0;
+
+static const uint32_t scale=2;
 
 struct
 {
@@ -64,21 +70,21 @@ static int32_t app_handle_input(struct android_app *app, AInputEvent *event)
 					{
 						case AMOTION_EVENT_ACTION_DOWN:
 							MouseEvent.button|=MOUSE_TOUCH;
-							MouseEvent.dx=(int)AMotionEvent_getX(event, 0);
-							MouseEvent.dy=winHeight-(int)AMotionEvent_getY(event, 0);
+							MouseEvent.dx=(int)(AMotionEvent_getX(event, 0)/scale);
+							MouseEvent.dy=config.windowHeight-(int)(AMotionEvent_getY(event, 0)/scale);
 							Event_Trigger(EVENT_MOUSEDOWN, &MouseEvent);
 							break;
 
 						case AMOTION_EVENT_ACTION_UP:
 							MouseEvent.button&=~MOUSE_TOUCH;
-							MouseEvent.dx=(int)AMotionEvent_getX(event, 0);
-							MouseEvent.dy=winHeight-(int)AMotionEvent_getY(event, 0);
+							MouseEvent.dx=(int)(AMotionEvent_getX(event, 0)/scale);
+							MouseEvent.dy=config.windowHeight-(int)(AMotionEvent_getY(event, 0)/scale);
 							Event_Trigger(EVENT_MOUSEUP, &MouseEvent);
 							break;
 
 						case AMOTION_EVENT_ACTION_MOVE:
-							MouseEvent.dx=(int)AMotionEvent_getX(event, 0);
-							MouseEvent.dy=winHeight-(int)AMotionEvent_getY(event, 0);
+							MouseEvent.dx=(int)(AMotionEvent_getX(event, 0)/scale);
+							MouseEvent.dy=config.windowHeight-(int)(AMotionEvent_getY(event, 0)/scale);
 							Event_Trigger(EVENT_MOUSEMOVE, &MouseEvent);
 							break;
 					}
@@ -177,14 +183,14 @@ static void app_handle_cmd(struct android_app *app, int32_t cmd)
 	switch(cmd)
 	{
 		case APP_CMD_INIT_WINDOW:
-			winWidth=ANativeWindow_getWidth(app->window)/2;
-			winHeight=ANativeWindow_getHeight(app->window)/2;
-			ANativeWindow_setBuffersGeometry(app->window, winWidth, winHeight, 0);
+			config.windowWidth=ANativeWindow_getWidth(app->window)/scale;
+			config.windowHeight=ANativeWindow_getHeight(app->window)/scale;
+			ANativeWindow_setBuffersGeometry(app->window, config.windowWidth, config.windowHeight, 0);
 
 			vkContext.window=app->window;
 
-			DBGPRINTF(DEBUG_INFO, "Allocating zone memory...\n");
-			zone=Zone_Init(256*1000*1000);
+			DBGPRINTF(DEBUG_INFO, "Allocating zone memory (%dMiB)...\n", MEMZONE_SIZE/1024/1024);
+			zone=Zone_Init(MEMZONE_SIZE);
 
 			if(zone==NULL)
 			{
@@ -193,6 +199,14 @@ static void app_handle_cmd(struct android_app *app, int32_t cmd)
 				ANativeActivity_finish(app->activity);
 				return;
 			}
+
+			if(!Config_ReadINI(&config, "config.ini"))
+			{
+				DBGPRINTF(DEBUG_ERROR, "Unable to read config.ini.\n");
+				return;
+			}
+
+			vkContext.deviceIndex=0;
 
 			DBGPRINTF(DEBUG_INFO, "Creating Vulkan instance...\n");
 			if(!vkuCreateInstance(&vkInstance))
@@ -222,8 +236,20 @@ static void app_handle_cmd(struct android_app *app, int32_t cmd)
 			}
 			else
 			{
-				renderWidth=swapchain.extent.width;
-				renderHeight=swapchain.extent.height;
+				config.renderWidth=swapchain.extent.width;
+				config.renderHeight=swapchain.extent.height;
+			}
+
+			DBGPRINTF(DEBUG_INFO, "Initializing VR...\n");
+			if(!VR_Init(&xrContext, vkInstance, &vkContext))
+			{
+				DBGPRINTF(DEBUG_ERROR, "\t...failed, turning off VR support.\n");
+				isVR=false;
+			}
+			else
+			{
+				config.renderWidth=xrContext.swapchainExtent.width;
+				config.renderHeight=xrContext.swapchainExtent.height;
 			}
 
 			DBGPRINTF(DEBUG_INFO, "Init...\n");
@@ -290,12 +316,26 @@ void android_main(struct android_app *app)
 
 	android_asset_manager=app->activity->assetManager;
 
+	PFN_xrInitializeLoaderKHR xrInitializeLoaderKHR=XR_NULL_HANDLE;
+	xrGetInstanceProcAddr(XR_NULL_HANDLE, "xrInitializeLoaderKHR", (PFN_xrVoidFunction *)&xrInitializeLoaderKHR);
+
+	if(xrInitializeLoaderKHR!=NULL)
+	{
+		XrLoaderInitInfoAndroidKHR loaderInitializeInfoAndroid=
+		{
+			.type=XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR,
+			.applicationVM=app->activity->vm,
+			.applicationContext=app->activity->clazz
+		};
+		xrInitializeLoaderKHR((XrLoaderInitInfoBaseHeaderKHR *)&loaderInitializeInfoAndroid);
+	}
+
 	while(1)
 	{
 		int ident, events;
 		struct android_poll_source *source;
 
-		while((ident=ALooper_pollAll(appState.running?0:-1, NULL, &events, (void **)&source))>=0)
+		while((ident=ALooper_pollOnce(appState.running?0:-1, NULL, &events, (void **)&source))>=0)
 		{
 			// Process this event.
 			if(source!=NULL)

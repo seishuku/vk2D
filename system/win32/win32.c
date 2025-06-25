@@ -4,24 +4,23 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "../system/system.h"
-#include "../vulkan/vulkan.h"
-#include "../utils/event.h"
-#include "../math/math.h"
+#include "../../system/system.h"
+#include "../../vulkan/vulkan.h"
+#include "../../math/math.h"
+#include "../../utils/config.h"
+#include "../../utils/event.h"
 
 MemZone_t *zone;
 
 char szAppName[]="Vulkan";
 
 bool isDone=false;
+bool toggleFullscreen=true;
 
 extern VkInstance vkInstance;
 extern VkuContext_t vkContext;
 
 extern VkuSwapchain_t swapchain;
-
-static uint32_t winWidth=1920, winHeight=1080;
-extern uint32_t renderWidth, renderHeight;
 
 float fps=0.0f, fTimeStep=0.0f, fTime=0.0f;
 
@@ -118,8 +117,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case WM_SIZE:
-			winWidth=LOWORD(lParam);
-			winHeight=HIWORD(lParam);
+			config.windowWidth=LOWORD(lParam);
+			config.windowHeight=HIWORD(lParam);
 			break;
 
 		case WM_ACTIVATE:
@@ -137,6 +136,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			{
 				ShowCursor(TRUE);
 				UnregisterRawInput();
+			}
+			break;
+
+		case WM_SYSKEYUP:
+			if(HIWORD(lParam)&KF_ALTDOWN&&LOWORD(wParam)==VK_RETURN)
+			{
+				static uint32_t OldWidth, OldHeight;
+
+				if(toggleFullscreen)
+				{
+					toggleFullscreen=false;
+					DBGPRINTF(DEBUG_INFO, "Going full screen...\n");
+
+					OldWidth=config.windowWidth;
+					OldHeight=config.windowHeight;
+
+					config.windowWidth=GetSystemMetrics(SM_CXSCREEN);
+					config.windowHeight=GetSystemMetrics(SM_CYSCREEN);
+					SetWindowPos(vkContext.hWnd, HWND_TOPMOST, 0, 0, config.windowWidth, config.windowHeight, 0);
+				}
+				else
+				{
+					toggleFullscreen=true;
+					DBGPRINTF(DEBUG_INFO, "Going windowed...\n");
+
+					config.windowWidth=OldWidth;
+					config.windowHeight=OldHeight;
+					SetWindowPos(vkContext.hWnd, HWND_TOPMOST, 0, 0, config.windowWidth, config.windowHeight, 0);
+				}
 			}
 			break;
 
@@ -348,6 +376,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
+#if 0
+#include "../../renderdoc_app.h"
+RENDERDOC_API_1_6_0 *rdoc_api=NULL;
+#endif
+
 #ifndef _CONSOLE
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int iCmdShow)
 {
@@ -375,13 +408,20 @@ int main(int argc, char **argv)
 	SetConsoleMode(hOutput, dwMode|ENABLE_PROCESSED_OUTPUT|ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 #endif
 
-	DBGPRINTF(DEBUG_INFO, "Allocating zone memory...\n");
-	zone=Zone_Init(256*1000*1000);
+	DBGPRINTF(DEBUG_INFO, "Allocating zone memory (%dMiB)...\n", MEMZONE_SIZE/1024/1024);
+	zone=Zone_Init(MEMZONE_SIZE);
 
 	if(zone==NULL)
 	{
 		DBGPRINTF(DEBUG_ERROR, "\t...zone allocation failed!\n");
 
+		return -1;
+	}
+
+	if(!Config_ReadINI(&config, "config.ini"))
+	{
+
+		DBGPRINTF(DEBUG_ERROR, "Unable to read config.ini.\n");
 		return -1;
 	}
 
@@ -401,10 +441,10 @@ int main(int argc, char **argv)
 
 	RECT Rect;
 
-	SetRect(&Rect, 0, 0, winWidth, winHeight);
-	AdjustWindowRect(&Rect, WS_OVERLAPPED|WS_SYSMENU|WS_CAPTION|WS_MINIMIZEBOX, FALSE);
+	SetRect(&Rect, 0, 0, config.windowWidth, config.windowHeight);
+	AdjustWindowRect(&Rect, WS_POPUP, FALSE);
 
-	vkContext.hWnd=CreateWindow(szAppName, szAppName, WS_OVERLAPPED|WS_SYSMENU|WS_CAPTION|WS_MINIMIZEBOX|WS_CLIPSIBLINGS, CW_USEDEFAULT, CW_USEDEFAULT, Rect.right-Rect.left, Rect.bottom-Rect.top, NULL, NULL, hInstance, NULL);
+	vkContext.hWnd=CreateWindow(szAppName, szAppName, WS_POPUP|WS_CLIPSIBLINGS, 0, 0, Rect.right-Rect.left, Rect.bottom-Rect.top, NULL, NULL, hInstance, NULL);
 
 	ShowWindow(vkContext.hWnd, SW_SHOW);
 	SetForegroundWindow(vkContext.hWnd);
@@ -415,6 +455,8 @@ int main(int argc, char **argv)
 		DBGPRINTF(DEBUG_ERROR, "\t...failed.\n");
 		return -1;
 	}
+
+	vkContext.deviceIndex=config.deviceIndex;
 
 	DBGPRINTF(DEBUG_INFO, "Creating Vulkan context...\n");
 	if(!vkuCreateContext(vkInstance, &vkContext))
@@ -431,8 +473,8 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		renderWidth=swapchain.extent.width;
-		renderHeight=swapchain.extent.height;
+		config.renderWidth=swapchain.extent.width;
+		config.renderHeight=swapchain.extent.height;
 	}
 
 	DBGPRINTF(DEBUG_INFO, "Initializing Vulkan resources...\n");
@@ -444,6 +486,20 @@ int main(int argc, char **argv)
 
 	DBGPRINTF(DEBUG_INFO, "\nCurrent system zone memory allocations:\n");
 	Zone_Print(zone);
+
+#if 0
+	// RenderDoc frame capture for VR mode
+	HMODULE mod=GetModuleHandleA("renderdoc.dll");
+	if(mod)
+	{
+		pRENDERDOC_GetAPI RENDERDOC_GetAPI=(pRENDERDOC_GetAPI)GetProcAddress(mod, "RENDERDOC_GetAPI");
+
+		if(!RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_6_0, (void **)&rdoc_api))
+			return -1;
+	}
+	
+	bool captureThisFrame=false;
+#endif
 
 	DBGPRINTF(DEBUG_INFO, "\nStarting main loop.\n");
 	while(!isDone)
@@ -466,6 +522,12 @@ int main(int argc, char **argv)
 
 			double startTime=GetClock();
 
+#if 0
+			// RenderDoc frame capture for VR mode
+			if(captureThisFrame&&rdoc_api)
+				rdoc_api->StartFrameCapture(NULL, NULL);
+#endif
+
 			Render();
 
 			fTimeStep=(float)(GetClock()-startTime);
@@ -474,6 +536,15 @@ int main(int argc, char **argv)
 			avgFPS+=1.0f/fTimeStep;
 
 			static uint32_t frameCount=0;
+
+#if 0
+			// RenderDoc frame capture for VR mode
+			if(captureThisFrame&&rdoc_api)
+			{
+				captureThisFrame=false;
+				rdoc_api->EndFrameCapture(NULL, NULL);
+			}
+#endif
 
 			if(frameCount++>100)
 			{

@@ -49,25 +49,19 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 			break;
 	}
 
+	if(!foundFormat)
+		return VK_FALSE;
+
 	Zone_Free(zone, surfaceFormats);
 
 	// Get physical device surface properties and formats
 	VkSurfaceCapabilitiesKHR surfaceCaps;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physicalDevice, context->surface, &surfaceCaps);
 
-	if(surfaceCaps.currentTransform&VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR||surfaceCaps.currentTransform&VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)
-	{
-		// Swap to get identity width and height
-		uint32_t width=surfaceCaps.currentExtent.width;
-		uint32_t height=surfaceCaps.currentExtent.height;
-		surfaceCaps.currentExtent.height=width;
-		surfaceCaps.currentExtent.width=height;
-	}
-
 	// Set swapchain extents to the surface width/height,
 	// otherwise if extent is already non-zero, use that for surface width/height.
 	// This allows setting width/height externally.
-	if(!(swapchain->extent.width&&swapchain->extent.height))
+	if(!(swapchain->extent.width&&swapchain->extent.height)||swapchain->swapchain)
 		swapchain->extent=surfaceCaps.currentExtent;
 
 	// Get available present modes
@@ -121,7 +115,7 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 	// Find a supported composite alpha format (not all devices support alpha opaque)
 	// Simply select the first composite alpha format available
 	VkCompositeAlphaFlagBitsKHR compositeAlpha=VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	VkCompositeAlphaFlagBitsKHR compositeAlphaFlags[]=
+	VkCompositeAlphaFlagBitsKHR preferredCompositeAlpha[]=
 	{
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
@@ -129,11 +123,11 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 		VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR
 	};
 
-	for(uint32_t i=0;i<sizeof(compositeAlphaFlags);i++)
+	for(uint32_t i=0;i<sizeof(preferredCompositeAlpha);i++)
 	{
-		if(surfaceCaps.supportedCompositeAlpha&compositeAlphaFlags[i])
+		if(surfaceCaps.supportedCompositeAlpha&preferredCompositeAlpha[i])
 		{
-			compositeAlpha=compositeAlphaFlags[i];
+			compositeAlpha=preferredCompositeAlpha[i];
 			break;
 		}
 	}
@@ -151,6 +145,7 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 	VkSwapchainKHR newSwapchain;
 	VkImageView newImageView[VKU_MAX_FRAME_COUNT];
 	VkImage newImage[VKU_MAX_FRAME_COUNT];
+	const uint32_t numImages=max(3, surfaceCaps.minImageCount);
 
 	result=vkCreateSwapchainKHR(context->device, &(VkSwapchainCreateInfoKHR)
 	{
@@ -158,7 +153,7 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 		.pNext=VK_NULL_HANDLE,
 		.flags=0,
 		.surface=context->surface,
-		.minImageCount=max(3, surfaceCaps.minImageCount),
+		.minImageCount=numImages,
 		.imageFormat=swapchain->surfaceFormat.format,
 		.imageColorSpace=swapchain->surfaceFormat.colorSpace,
 		.imageExtent=swapchain->extent,
@@ -167,7 +162,7 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 		.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE,
 		.queueFamilyIndexCount=0,
 		.pQueueFamilyIndices=VK_NULL_HANDLE,
-		.preTransform=surfaceCaps.currentTransform,
+		.preTransform=VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 		.compositeAlpha=compositeAlpha,
 		.presentMode=swapchainPresentMode,
 		.clipped=VK_TRUE,
@@ -205,7 +200,9 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 		{
 			.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.pNext=VK_NULL_HANDLE,
+			.flags=0,
 			.image=newImage[i],
+			.viewType=VK_IMAGE_VIEW_TYPE_2D,
 			.format=swapchain->surfaceFormat.format,
 			.components={ VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
 			.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT,
@@ -213,16 +210,14 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 			.subresourceRange.levelCount=1,
 			.subresourceRange.baseArrayLayer=0,
 			.subresourceRange.layerCount=1,
-			.viewType=VK_IMAGE_VIEW_TYPE_2D,
-			.flags=0,
 		}, VK_NULL_HANDLE, &newImageView[i]);
 	}
 
 	vkuOneShotCommandBufferEnd(context, commandBuffer);
 
 	// If there was already a swapchain
-	if(swapchain->swapchain)
-		vkuDestroySwapchain(context, swapchain);
+	VkuSwapchain_t oldSwapchain;
+	memcpy(&oldSwapchain, swapchain, sizeof(VkuSwapchain_t));
 
 	swapchain->swapchain=newSwapchain;
 
@@ -231,6 +226,9 @@ VkBool32 vkuCreateSwapchain(VkuContext_t *context, VkuSwapchain_t *swapchain, Vk
 		swapchain->image[i]=newImage[i];
 		swapchain->imageView[i]=newImageView[i];
 	}
+
+	if(oldSwapchain.swapchain)
+		vkuDestroySwapchain(context, &oldSwapchain);
 
 	return VK_TRUE;
 }

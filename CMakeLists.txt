@@ -7,11 +7,10 @@ project ("vk2D" LANGUAGES C)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
-#include("fetchDeps")
+include("fetchDeps")
 include("buildShaders")
 
-#fetchDeps()
-buildShaders()
+fetchDeps()
 
 set(PROJECT_SOURCES
 	math/math.c
@@ -22,7 +21,12 @@ set(PROJECT_SOURCES
 	math/vec4.c
 	system/memzone.c
 	system/threads.c
+	utils/base64.c
+	utils/config.c
 	utils/event.c
+	utils/pipeline.c
+	utils/spvparse.c
+	utils/tokenizer.c
 	vulkan/vulkan_buffer.c
 	vulkan/vulkan_context.c
 	vulkan/vulkan_descriptorset.c
@@ -50,3 +54,5 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Android")
 	include("buildAndroid")
 	buildAndroid()
 endif()
+
+buildShaders()

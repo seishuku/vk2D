@@ -10,10 +10,14 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "../system/system.h"
-#include "../vulkan/vulkan.h"
-#include "../math/math.h"
-#include "../utils/event.h"
+#include "../../system/system.h"
+#include "../../vulkan/vulkan.h"
+#include "../../math/math.h"
+#include "../../camera/camera.h"
+#include "../../utils/config.h"
+#include "../../utils/list.h"
+#include "../../utils/event.h"
+#include "../../vr/vr.h"
 
 MemZone_t *zone;
 
@@ -22,6 +26,9 @@ char szAppName[]="Vulkan";
 static int _xi_opcode=0;
 
 bool isDone=false;
+bool toggleFullscreen=true;
+
+extern XruContext_t xrContext;
 
 extern VkInstance vkInstance;
 extern VkuContext_t vkContext;
@@ -29,9 +36,6 @@ extern VkuContext_t vkContext;
 extern VkuMemZone_t vkZone;
 
 extern VkuSwapchain_t swapchain;
-
-static uint32_t winWidth=1920, winHeight=1080;
-extern uint32_t renderWidth, renderHeight;
 
 float fps=0.0f, fTimeStep=0.0f, fTime=0.0f;
 
@@ -68,8 +72,8 @@ void EventLoop(void)
 					break;
 
 				case ConfigureNotify:
-					winWidth=event.xconfigure.width;
-					winHeight=event.xconfigure.height;
+					config.windowWidth=event.xconfigure.width;
+					config.windowHeight=event.xconfigure.height;
 					break;
 			}
 
@@ -93,7 +97,7 @@ void EventLoop(void)
 
 							Event_Trigger(EVENT_MOUSEMOVE, &mouseEvent);
 
-							XWarpPointer(vkContext.display, None, vkContext.window, 0, 0, 0, 0, winWidth/2, winHeight/2);
+							XWarpPointer(vkContext.display, None, vkContext.window, 0, 0, 0, 0, config.windowWidth/2, config.windowHeight/2);
 							XFlush(vkContext.display);
 						}
 						break;
@@ -300,13 +304,19 @@ static bool register_input(Display *_display, Window _window)
 
 int main(int argc, char **argv)
 {
-	DBGPRINTF(DEBUG_INFO, "Allocating zone memory...\n");
-	zone=Zone_Init(256*1000*1000);
+	DBGPRINTF(DEBUG_INFO, "Allocating zone memory (%dMiB)...\n", MEMZONE_SIZE/1024/1024);
+	zone=Zone_Init(MEMZONE_SIZE);
 
 	if(zone==NULL)
 	{
 		DBGPRINTF(DEBUG_ERROR, "\t...zone allocation failed!\n");
 
+		return -1;
+	}
+
+	if(!Config_ReadINI(&config, "config.ini"))
+	{
+		DBGPRINTF(DEBUG_ERROR, "Unable to read config.ini.\n");
 		return -1;
 	}
 
@@ -324,11 +334,11 @@ int main(int argc, char **argv)
 	Window Root=RootWindow(vkContext.display, Screen);
 
 	DBGPRINTF(DEBUG_INFO, "Creating X11 Window...\n");
-	vkContext.window=XCreateSimpleWindow(vkContext.display, Root, 10, 10, winWidth, winHeight, 1, BlackPixel(vkContext.display, Screen), WhitePixel(vkContext.display, Screen));
+	vkContext.window=XCreateSimpleWindow(vkContext.display, Root, 10, 10, config.windowWidth, config.windowHeight, 1, BlackPixel(vkContext.display, Screen), WhitePixel(vkContext.display, Screen));
 	XSelectInput(vkContext.display, vkContext.window, StructureNotifyMask|PointerMotionMask|ExposureMask|ButtonPressMask|KeyPressMask|KeyReleaseMask);
 	XStoreName(vkContext.display, vkContext.window, szAppName);
 
-	XWarpPointer(vkContext.display, None, vkContext.window, 0, 0, 0, 0, winWidth/2, winHeight/2);
+	XWarpPointer(vkContext.display, None, vkContext.window, 0, 0, 0, 0, config.windowWidth/2, config.windowHeight/2);
 	XFixesHideCursor(vkContext.display, vkContext.window);
 
 	register_input(vkContext.display, vkContext.window);
@@ -342,6 +352,8 @@ int main(int argc, char **argv)
 		DBGPRINTF(DEBUG_ERROR, "...failed.\n");
 		return -1;
 	}
+
+	vkContext.deviceIndex=config.deviceIndex;
 
 	DBGPRINTF(DEBUG_INFO, "Creating Vulkan Context...\n");
 	if(!vkuCreateContext(vkInstance, &vkContext))
@@ -358,8 +370,23 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		renderWidth=swapchain.extent.width;
-		renderHeight=swapchain.extent.height;
+		config.renderWidth=swapchain.extent.width;
+		config.renderHeight=swapchain.extent.height;
+	}
+
+	DBGPRINTF(DEBUG_INFO, "Initializing VR...\n");
+	if(!VR_Init(&xrContext, vkInstance, &vkContext))
+	{
+		DBGPRINTF(DEBUG_ERROR, "\t...failed, turning off VR support.\n");
+		config.isVR=false;
+	}
+	else
+	{
+		config.renderWidth=xrContext.swapchainExtent.width;
+		config.renderHeight=xrContext.swapchainExtent.height;
+		config.windowWidth=config.renderWidth;
+		config.windowHeight=config.renderHeight;
+		XMoveResizeWindow(vkContext.display, vkContext.window, 0, 0, config.windowWidth/2, config.windowHeight/2);
 	}
 
 	DBGPRINTF(DEBUG_INFO, "Initializing Vulkan resources...\n");
@@ -367,7 +394,7 @@ int main(int argc, char **argv)
 	{
 		DBGPRINTF(DEBUG_ERROR, "\t...failed.\n");
 
-		DestroyVulkan(vkInstance, &vkContext);
+		vkuDestroyContext(vkInstance, &vkContext);
 		vkDestroyInstance(vkInstance, VK_NULL_HANDLE);
 
 		XDestroyWindow(vkContext.display, vkContext.window);

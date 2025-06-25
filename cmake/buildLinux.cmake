@@ -1,10 +1,10 @@
 function("buildLinux")
 	if(WAYLAND)
 		add_definitions(-DLINUX -DWAYLAND -g)
-		list(APPEND PROJECT_SOURCES system/linux_wayland.c system/xdg-shell.c system/relative-pointer.c)
+		list(APPEND PROJECT_SOURCES system/linux/linux_wayland.c system/linux/wayland/xdg-shell.c system/linux/wayland/relative-pointer.c system/linux/wayland/pointer-constraints.c)
 	else()
 		add_definitions(-DLINUX -g)
-		list(APPEND PROJECT_SOURCES system/linux_x11.c)
+		list(APPEND PROJECT_SOURCES system/linux/linux_x11.c)
 	endif()
 
 	if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
